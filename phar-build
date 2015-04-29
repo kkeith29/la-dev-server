@@ -1,0 +1,51 @@
+#!/usr/bin/env php
+<?php
+
+use app\classes\cli;
+use app\classes\func;
+use app\classes\manifest;
+use app\exceptions\app as app_exception;
+
+define('APP_NAME','la-dev');
+define('PHAR_NAME',APP_NAME . '.phar');
+define('PATH_BASE',dirname(__FILE__) . '/');
+define('PATH_PHAR',PATH_BASE . 'src/');
+define('PATH_BUILD',PATH_BASE . 'build/');
+define('PATH_PUBLIC',PATH_BASE . 'public/');
+
+include PATH_PHAR . 'includes/init.php';
+
+try {
+	if ( ( $version = cli::args()->get('version') ) !== false ) {
+		if ( preg_match( '#^[0-9]+\.[0-9]+\.[0-9]+$#',$version ) !== 1 ) {
+			throw new app_exception( 'Version \'%s\' is not valid',$version );
+		}
+		if ( cli::args()->has('dev') ) {
+			$version .= '-dev';
+		}
+		$package_file = PATH_PHAR . 'package.json';
+		if ( file_exists( $package_file ) ) {
+			$data = json_decode( file_get_contents( $package_file ) );
+			if ( version_compare( $data->version,$version,'>=' ) && !cli::args()->has('force') ) {
+				throw new app_exception( 'Version \'%s\' is less than or equal to \'%s\'',$version,$data->version );
+			}
+		}
+		else {
+			$data = new \stdClass;
+		}
+		cli::line( 'Updating version to %s',$version );
+		$data->version = $version;
+		file_put_contents( $package_file,json_encode( $data ) );
+	}
+	cli::line('Creating phar');
+	$build_file = PATH_BUILD . PHAR_NAME;
+	$phar = new Phar( $build_file,FilesystemIterator::CURRENT_AS_FILEINFO | FilesystemIterator::KEY_AS_FILENAME,PHAR_NAME );
+	$phar->buildFromIterator( new RecursiveIteratorIterator( new RecursiveDirectoryIterator( PATH_PHAR,FilesystemIterator::SKIP_DOTS ) ),PATH_PHAR ); //remove .DS_Store files
+	$phar->setStub( file_get_contents( PATH_BASE . 'stub.php' ) );
+	cli::line('Done');
+}
+catch( app_exception $e ) {
+	cli::line( $e->getMessage() );
+}
+
+?>
